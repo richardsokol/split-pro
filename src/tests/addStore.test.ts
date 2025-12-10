@@ -13,6 +13,14 @@ jest.mock('~/utils/array', () => ({
   shuffleArray: jest.fn(<T>(arr: T[]): T[] => arr), // No shuffling for predictable tests
 }));
 
+// Mock Next Router
+jest.mock('next/router', () => ({
+  __esModule: true,
+  default: {
+    push: jest.fn(() => Promise.resolve(true)),
+  },
+}));
+
 // Create mock users for testing
 const createMockUser = (id: number, name: string, email: string): User => ({
   id,
@@ -1066,3 +1074,301 @@ describe('Penny distribution preservation', () => {
     expect(result[1]!.amount).toBe(-2n);
   });
 });
+
+describe('Zustand Store Actions', () => {
+  beforeEach(() => {
+    useAddExpenseStore.getState().actions.resetState();
+  });
+
+  describe('setAmount and setAmountStr', () => {
+    it('should set amount string', () => {
+      const store = useAddExpenseStore.getState();
+      
+      store.actions.setAmountStr('123.45');
+      expect(useAddExpenseStore.getState().amountStr).toBe('123.45');
+    });
+  });
+
+  describe('setSplitType', () => {
+    it('should change split type and recalculate participants', () => {
+      const store = useAddExpenseStore.getState();
+      const participants = createParticipants([user1, user2]);
+      
+      store.actions.setAmount(10000n);
+      store.actions.setParticipants(participants);
+      store.actions.setPaidBy(user1);
+
+      store.actions.setSplitType(SplitType.PERCENTAGE);
+      expect(useAddExpenseStore.getState().splitType).toBe(SplitType.PERCENTAGE);
+    });
+  });
+
+  describe('addOrUpdateParticipant', () => {
+    it('should add new participant', () => {
+      const store = useAddExpenseStore.getState();
+      
+      store.actions.addOrUpdateParticipant(user1);
+      let state = useAddExpenseStore.getState();
+      expect(state.participants).toHaveLength(1);
+      expect(state.participants[0]?.id).toBe(user1.id);
+
+      store.actions.addOrUpdateParticipant(user2);
+      state = useAddExpenseStore.getState();
+      expect(state.participants).toHaveLength(2);
+    });
+
+    it('should update existing participant', () => {
+      const store = useAddExpenseStore.getState();
+      
+      store.actions.addOrUpdateParticipant(user1);
+      const updatedUser = { ...user1, name: 'Alice Updated' };
+      store.actions.addOrUpdateParticipant(updatedUser);
+      
+      const state = useAddExpenseStore.getState();
+      expect(state.participants).toHaveLength(1);
+      expect(state.participants[0]?.name).toBe('Alice Updated');
+    });
+  });
+
+  describe('removeParticipant and removeLastParticipant', () => {
+    it('should remove participant by id (uses Router mock)', () => {
+      const store = useAddExpenseStore.getState();
+      
+      store.actions.setParticipants(createParticipants([user1, user2, user3]));
+      store.actions.removeParticipant(user2.id);
+      
+      const state = useAddExpenseStore.getState();
+      expect(state.participants).toHaveLength(2);
+      expect(state.participants.find(p => p.id === user2.id)).toBeUndefined();
+    });
+
+    it('should remove last participant (uses Router mock)', () => {
+      const store = useAddExpenseStore.getState();
+      
+      store.actions.setParticipants(createParticipants([user1, user2, user3]));
+      store.actions.removeLastParticipant();
+      
+      const state = useAddExpenseStore.getState();
+      expect(state.participants).toHaveLength(2);
+    });
+
+    it('should not remove participant if only one left', () => {
+      const store = useAddExpenseStore.getState();
+      
+      store.actions.setParticipants(createParticipants([user1]));
+      store.actions.removeLastParticipant();
+      
+      const state = useAddExpenseStore.getState();
+      expect(state.participants).toHaveLength(1);
+    });
+  });
+
+  describe('setSplitShare', () => {
+    it('should update split share for specific user and type', () => {
+      const store = useAddExpenseStore.getState();
+      
+      store.actions.setParticipants(createParticipants([user1, user2]));
+      store.actions.setSplitShare(SplitType.PERCENTAGE, user1.id, 6000n);
+      
+      const state = useAddExpenseStore.getState();
+      expect(state.splitShares[user1.id]?.[SplitType.PERCENTAGE]).toBe(6000n);
+    });
+  });
+
+  describe('Simple setters', () => {
+    it('should set currency', () => {
+      const store = useAddExpenseStore.getState();
+      store.actions.setCurrency('EUR');
+      expect(useAddExpenseStore.getState().currency).toBe('EUR');
+    });
+
+    it('should set category', () => {
+      const store = useAddExpenseStore.getState();
+      store.actions.setCategory('Food');
+      expect(useAddExpenseStore.getState().category).toBe('Food');
+    });
+
+    it('should set description', () => {
+      const store = useAddExpenseStore.getState();
+      store.actions.setDescription('Lunch');
+      expect(useAddExpenseStore.getState().description).toBe('Lunch');
+    });
+
+    it('should set nameOrEmail and toggle showFriends', () => {
+      const store = useAddExpenseStore.getState();
+      
+      store.actions.setNameOrEmail('john@example.com');
+      let state = useAddExpenseStore.getState();
+      expect(state.nameOrEmail).toBe('john@example.com');
+      expect(state.showFriends).toBe(true);
+
+      store.actions.setNameOrEmail('');
+      state = useAddExpenseStore.getState();
+      expect(state.showFriends).toBe(false);
+    });
+
+    it('should set file uploading status', () => {
+      const store = useAddExpenseStore.getState();
+      store.actions.setFileUploading(true);
+      expect(useAddExpenseStore.getState().isFileUploading).toBe(true);
+    });
+
+    it('should set file key', () => {
+      const store = useAddExpenseStore.getState();
+      store.actions.setFileKey('file-123');
+      expect(useAddExpenseStore.getState().fileKey).toBe('file-123');
+    });
+
+    it('should set split screen open', () => {
+      const store = useAddExpenseStore.getState();
+      store.actions.setSplitScreenOpen(true);
+      expect(useAddExpenseStore.getState().splitScreenOpen).toBe(true);
+    });
+
+    it('should set expense date', () => {
+      const store = useAddExpenseStore.getState();
+      const date = new Date('2024-01-01');
+      store.actions.setExpenseDate(date);
+      expect(useAddExpenseStore.getState().expenseDate).toEqual(date);
+    });
+
+    it('should set transaction id', () => {
+      const store = useAddExpenseStore.getState();
+      store.actions.setTransactionId('txn-123');
+      expect(useAddExpenseStore.getState().transactionId).toBe('txn-123');
+    });
+
+    it('should set cron expression', () => {
+      const store = useAddExpenseStore.getState();
+      store.actions.setCronExpression('0 0 * * *');
+      expect(useAddExpenseStore.getState().cronExpression).toBe('0 0 * * *');
+    });
+
+    it('should set transaction loading state', () => {
+      const store = useAddExpenseStore.getState();
+      store.actions.setIsTransactionLoading(true);
+      expect(useAddExpenseStore.getState().isTransactionLoading).toBe(true);
+    });
+
+    it('should set multiple transactions', () => {
+      const store = useAddExpenseStore.getState();
+      const transactions = [{ amount: 1000n, description: 'Test' }] as any;
+      store.actions.setMultipleTransactions(transactions);
+      expect(useAddExpenseStore.getState().multipleTransactions).toEqual(transactions);
+    });
+  });
+
+  describe('setPaidBy', () => {
+    it('should set payer and recalculate splits', () => {
+      const store = useAddExpenseStore.getState();
+      
+      store.actions.setAmount(10000n);
+      store.actions.setParticipants(createParticipants([user1, user2]));
+      store.actions.setPaidBy(user2);
+      
+      const state = useAddExpenseStore.getState();
+      expect(state.paidBy?.id).toBe(user2.id);
+    });
+  });
+
+  describe('setCurrentUser', () => {
+    it('should set current user and add to participants if not present', () => {
+      const store = useAddExpenseStore.getState();
+      
+      store.actions.setCurrentUser(user1);
+      let state = useAddExpenseStore.getState();
+      expect(state.currentUser?.id).toBe(user1.id);
+      expect(state.paidBy?.id).toBe(user1.id);
+      expect(state.participants.find(p => p.id === user1.id)).toBeDefined();
+    });
+
+    it('should not duplicate user if already in participants', () => {
+      const store = useAddExpenseStore.getState();
+      
+      store.actions.setParticipants(createParticipants([user1, user2]));
+      store.actions.setCurrentUser(user1);
+      
+      const state = useAddExpenseStore.getState();
+      expect(state.participants.filter(p => p.id === user1.id)).toHaveLength(1);
+    });
+  });
+
+  describe('setGroup', () => {
+    it('should set group', () => {
+      const store = useAddExpenseStore.getState();
+      const mockGroup = { id: 1, name: 'Test Group' } as any;
+      
+      store.actions.setGroup(mockGroup);
+      expect(useAddExpenseStore.getState().group).toEqual(mockGroup);
+    });
+
+    it('should clear group when undefined', () => {
+      const store = useAddExpenseStore.getState();
+      const mockGroup = { id: 1, name: 'Test Group' } as any;
+      
+      store.actions.setGroup(mockGroup);
+      store.actions.setGroup(undefined);
+      expect(useAddExpenseStore.getState().group).toBeUndefined();
+    });
+  });
+
+  describe('resetState', () => {
+    it('should keep current user after reset', () => {
+      const store = useAddExpenseStore.getState();
+      
+      store.actions.setCurrentUser(user1);
+      
+      store.actions.resetState();
+      
+      const state = useAddExpenseStore.getState();
+      expect(state.participants).toHaveLength(1);
+      expect(state.participants[0]?.id).toBe(user1.id);
+      expect(state.paidBy?.id).toBe(user1.id);
+    });
+  });
+
+  describe('setParticipants with existing amounts', () => {
+    it('should preserve amounts when participants have existing amounts', () => {
+      const store = useAddExpenseStore.getState();
+      
+      const participantsWithAmounts = [
+        { ...user1, amount: 5000n },
+        { ...user2, amount: -2500n },
+        { ...user3, amount: -2500n },
+      ];
+      
+      store.actions.setAmount(5000n);
+      store.actions.setParticipants(participantsWithAmounts, SplitType.EXACT);
+      
+      const state = useAddExpenseStore.getState();
+      expect(state.participants[0]?.amount).toBe(5000n);
+      expect(state.participants[1]?.amount).toBe(-2500n);
+    });
+
+    it('should handle participants without amounts (stub behavior)', () => {
+      const store = useAddExpenseStore.getState();
+      
+      const participantsNoAmounts = createParticipants([user1, user2]);
+      
+      store.actions.setAmount(10000n);
+      store.actions.setParticipants(participantsNoAmounts);
+      
+      const state = useAddExpenseStore.getState();
+      expect(state.participants).toHaveLength(2);
+    });
+  });
+});
+
+describe('initSplitShares helper', () => {
+  it('should initialize all split types with undefined', () => {
+    const shares = initSplitShares();
+    
+    expect(shares[SplitType.EQUAL]).toBeUndefined();
+    expect(shares[SplitType.PERCENTAGE]).toBeUndefined();
+    expect(shares[SplitType.SHARE]).toBeUndefined();
+    expect(shares[SplitType.EXACT]).toBeUndefined();
+    expect(shares[SplitType.ADJUSTMENT]).toBeUndefined();
+    expect(Object.keys(shares).length).toBeGreaterThanOrEqual(5);
+  });
+});
+
